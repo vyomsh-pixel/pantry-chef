@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}PantryChef{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+{% block head %}{% endblock %}
+</head>
+<body>
+<nav>
+  <a href="/" class="brand">Pantry<span>Chef</span></a>
+  <div class="nav-links">
+    <a href="/" class="{{ 'active' if active == 'generator' else '' }}">Generator</a>
+    <a href="/favorites" class="{{ 'active' if active == 'favorites' else '' }}">Favorites</a>
+  </div>
+</nav>
+<div class="wrap">
+  {% block content %}{% endblock %}
+  <footer>PantryChef &middot; Flask + OpenRouter API &middot; runs locally on your machine</footer>
+</div>
+{% block scripts %}{% endblock %}
+</body>
+</html>

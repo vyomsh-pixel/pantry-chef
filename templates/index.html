@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}PantryChef — Generator{% endblock %}
+{% block content %}
+
+<div class="page-intro">
+  <div class="tagline">Cook from what's already in the kitchen</div>
+</div>
+
+<div class="card">
+  <div class="field">
+    <label for="ingredients">What's in your kitchen?</label>
+    <textarea id="ingredients" placeholder="e.g. rice, eggs, spinach, onion, leftover chicken"></textarea>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label for="diet">Diet</label>
+      <select id="diet">
+        <option>No restriction</option>
+        <option>Vegetarian</option>
+        <option>Vegan</option>
+        <option>Gluten-free</option>
+        <option>High-protein</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="cuisine">Cuisine</label>
+      <select id="cuisine">
+        <option>Any</option>
+        <option>Indian</option>
+        <option>Italian</option>
+        <option>Chinese</option>
+        <option>Mexican</option>
+        <option>Mediterranean</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="servings">Servings: <span class="servings-value" id="servingsVal">2</span></label>
+      <input type="range" id="servings" min="1" max="6" value="2" style="width:100%; margin-top: 10px;">
+    </div>
+  </div>
+
+  <div class="field key-field">
+    <label for="modelField">Model <span style="text-transform:none; font-weight:400; color:#9c937f;">(optional override)</span></label>
+    <input type="text" id="modelField" placeholder="{{ default_model }}">
+    <div class="key-hint">Default is <code>{{ default_model }}</code>. If one model is
+      rate-limited, PantryChef automatically retries with the next available
+      free model — you don't need to do anything. Type a specific model id
+      here only if you want to force one.</div>
+  </div>
+
+  <button id="generateBtn">Generate Recipes</button>
+  <div class="status" id="status">Cooking up some ideas…</div>
+  <div class="error" id="errorBox"></div>
+</div>
+
+<div id="results">
+  <div class="recipe-grid" id="recipeGrid"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', () => PantryChef.initGenerator());
+</script>
+{% endblock %}
