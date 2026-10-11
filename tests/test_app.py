@@ -254,3 +254,141 @@ def test_favorites_full_flow(client):
 
     missing_resp = client.delete(f"/favorites/{fav_id}")
     assert missing_resp.status_code == 404
+
+
+def test_load_environment_file_handles_empty_values_without_crash(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text('OPENROUTER_API_KEY="abc"\nPREFERRED_MODEL=\nSECRET_KEY=""\n', encoding="utf-8")
+
+    monkeypatch.setenv("PREFERRED_MODEL", "old-model")
+    app.load_environment_file(str(env_file))
+
+    assert os.environ["OPENROUTER_API_KEY"] == "abc"
+    assert "PREFERRED_MODEL" not in os.environ
+    assert "SECRET_KEY" not in os.environ
+
+
+def test_parse_recipes_handles_non_dict_json_and_uppercase_fences():
+    payload = json.dumps({
+        "recipes": [
+            {
+                "name": "Simple Rice",
+                "cook_time": "20 minutes",
+                "ingredients": ["2 cups rice", {"item": "water", "amount": "4 cups"}],
+                "steps": ["Boil water", "Add rice"],
+                "nutrition": {"calories": "350 kcal", "protein": "7g"},
+            }
+        ]
+    })
+    fenced = f"```JSON\n{payload}\n```"
+    recipes = ai_client.parse_recipes(fenced)
+    assert len(recipes) == 1
+    assert recipes[0]["ingredients"] == [
+        {"item": "2 cups rice", "amount": ""},
+        {"item": "water", "amount": "4 cups"},
+    ]
+    assert recipes[0]["nutrition"]["calories"] == "350"
+
+    with pytest.raises(ai_client.GenerationError):
+        ai_client.parse_recipes("[1, 2, 3]")
+
+
+def test_generate_recipes_canonicalizes_ingredient_cache_key(monkeypatch):
+    calls = []
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        calls.append(1)
+        return FakeResponse(200, {"choices": [{"message": {"content": VALID_PAYLOAD}}]})
+
+    monkeypatch.setattr(ai_client.requests, "post", fake_post)
+    monkeypatch.setattr(ai_client, "get_free_models", lambda: ["model-a"])
+    ai_client._response_cache.clear()
+
+    ai_client.generate_recipes(api_key="dummy", ingredients="Rice, Eggs", diet="Any", cuisine="Any", servings=2)
+    ai_client.generate_recipes(api_key="dummy", ingredients="eggs,  rice", diet="Any", cuisine="Any", servings=2)
+    assert len(calls) == 1
+
+
+def test_routes_reject_non_dict_json_and_text_plain_csrf(client):
+    resp_list = client.post("/generate", json=["not", "a", "dict"])
+    assert resp_list.status_code == 400
+
+    resp_plain = client.post(
+        "/generate",
+        data='{"ingredients": "rice"}',
+        content_type="text/plain",
+    )
+    assert resp_plain.status_code == 400
+
+    fav_non_dict = client.post("/favorites", json={"recipe": "not-a-dict"})
+    assert fav_non_dict.status_code == 400
+
+
+def test_auth_register_login_export_and_delete_account(client):
+    me_initial = client.get("/api/auth/me")
+    assert me_initial.status_code == 200
+    assert me_initial.get_json()["user"] is None
+
+    reg_resp = client.post("/api/auth/register", json={
+        "username": "Chef_Alice",
+        "password": "secretpassword",
+        "display_name": "Alice",
+        "consent_accepted": True,
+    })
+    assert reg_resp.status_code == 201
+    user_data = reg_resp.get_json()["user"]
+    assert user_data["username"] == "chef_alice"
+    assert user_data["display_name"] == "Alice"
+    assert "password_hash" not in user_data
+
+    # Duplicate registration fails with 409
+    dup_resp = client.post("/api/auth/register", json={
+        "username": "chef_alice",
+        "password": "secretpassword",
+    })
+    assert dup_resp.status_code == 409
+
+    # Save a favorite under the authenticated account
+    fav_resp = client.post("/favorites", json={
+        "recipe": {"name": "Alice's Risotto", "ingredients": ["1 cup arborio"], "steps": ["Stir"]},
+        "model_used": "test-model",
+    })
+    assert fav_resp.status_code == 201
+
+    # Logout and log back in
+    logout_resp = client.post("/api/auth/logout")
+    assert logout_resp.status_code == 200
+    assert client.get("/api/auth/me").get_json()["user"] is None
+
+    bad_login = client.post("/api/auth/login", json={
+        "username": "chef_alice",
+        "password": "wrongpassword",
+    })
+    assert bad_login.status_code == 401
+
+    login_resp = client.post("/api/auth/login", json={
+        "username": "Chef_Alice",
+        "password": "secretpassword",
+    })
+    assert login_resp.status_code == 200
+    assert login_resp.get_json()["user"]["username"] == "chef_alice"
+
+    # Export user data
+    export_resp = client.get("/api/account/export")
+    assert export_resp.status_code == 200
+    exported = export_resp.get_json()
+    assert exported["user"]["username"] == "chef_alice"
+    assert len(exported["favorites"]) == 1
+    assert exported["favorites"][0]["name"] == "Alice's Risotto"
+    assert "exported_at" in exported
+
+    # Delete user account & data
+    del_resp = client.delete("/api/account")
+    assert del_resp.status_code == 200
+    assert del_resp.get_json()["deleted"] is True
+
+    # Session cleared and user + favorites deleted
+    assert client.get("/api/auth/me").get_json()["user"] is None
+    assert client.get("/api/account/export").status_code == 401
+    assert db.list_favorites() == []
+

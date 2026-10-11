@@ -6,7 +6,7 @@
   <div class="tagline">Cook from what's already in the kitchen</div>
 </div>
 
-<div class="card">
+<form class="card" id="generatorForm" novalidate>
   <div class="field">
     <label for="ingredients">What's in your kitchen?</label>
     <textarea id="ingredients" placeholder="e.g. rice, eggs, spinach, onion, leftover chicken"></textarea>
@@ -40,8 +40,8 @@
     </div>
   </div>
 
-  <div class="field key-field">
-    <label for="modelField">Model <span style="text-transform:none; font-weight:400; color:#9c937f;">(optional override)</span></label>
+  <div class="field key-field" id="model">
+    <label for="modelField">Model <span class="label-optional">(optional override)</span></label>
     <input type="text" id="modelField" placeholder="{{ default_model }}">
     <div class="key-hint">Default is <code>{{ default_model }}</code>. If one model is
       rate-limited, PantryChef automatically retries with the next available
@@ -49,12 +49,12 @@
       here only if you want to force one.</div>
   </div>
 
-  <button id="generateBtn">Generate Recipes</button>
-  <div class="status" id="status">Cooking up some ideas…</div>
-  <div class="error" id="errorBox"></div>
-</div>
+  <button type="submit" id="generateBtn">Generate Recipes</button>
+  <div class="status" id="status" role="status" aria-live="polite">Cooking up some ideas…</div>
+  <div class="error" id="errorBox" role="alert" aria-live="assertive"></div>
+</form>
 
-<div id="results">
+<div id="results" aria-live="polite">
   <div class="recipe-grid" id="recipeGrid"></div>
 </div>
 

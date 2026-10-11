@@ -10,17 +10,185 @@
 {% block head %}{% endblock %}
 </head>
 <body>
-<nav>
-  <a href="/" class="brand">Pantry<span>Chef</span></a>
-  <div class="nav-links">
-    <a href="/" class="{{ 'active' if active == 'generator' else '' }}">Generator</a>
-    <a href="/favorites" class="{{ 'active' if active == 'favorites' else '' }}">Favorites</a>
+<nav aria-label="Main navigation">
+  <div class="nav-primary">
+    <a href="/" class="brand">Pantry<span>Chef</span></a>
+    <div class="nav-links">
+      <a href="/" class="{{ 'active' if active == 'generator' else '' }}">Generator</a>
+      <a href="/favorites" class="{{ 'active' if active == 'favorites' else '' }}">Favorites</a>
+    </div>
+  </div>
+  <div class="nav-account" id="navAccount">
+    <span class="user-badge" id="navUserBadge" title="Current Kitchen Session">Guest Chef</span>
+    <button type="button" class="nav-action-btn" id="exportDataBtn" hidden aria-label="Export saved recipes and account data">Export Data</button>
+    <button type="button" class="nav-action-btn nav-action-danger" id="deleteAccountBtn" hidden aria-label="Delete account and saved data">Delete Account</button>
+    <button type="button" class="nav-action-btn" id="signOutBtn" aria-label="Sign out or lock kitchen session">Sign Out</button>
   </div>
 </nav>
-<div class="wrap">
+
+<main class="wrap">
   {% block content %}{% endblock %}
-  <footer>PantryChef &middot; Flask + OpenRouter API &middot; runs locally on your machine</footer>
+  <footer>
+    <div class="footer-disclaimer" role="note">
+      <strong>Culinary &amp; Allergen Disclaimer:</strong> AI-generated recipes, cooking times, internal temperatures, and nutrition estimates are informational only. Always verify ingredients for allergens, intolerances, and food safety before cooking or consuming.
+    </div>
+    <div class="footer-meta">
+      <span>PantryChef &middot; Flask + OpenRouter API &middot; runs locally on your machine</span>
+      <span class="footer-links">
+        <button type="button" class="link-btn" data-open-legal="privacy">Privacy Policy</button>
+        &middot;
+        <button type="button" class="link-btn" data-open-legal="terms">Terms of Use</button>
+        &middot;
+        <button type="button" class="link-btn" id="footerAuthTrigger">Chef Account &amp; Consent</button>
+      </span>
+    </div>
+  </footer>
+</main>
+
+<!-- Chef Auth & Pre-Use Consent Gate -->
+<div class="chef-auth-gate" id="chefAuthGate" role="dialog" aria-modal="true" aria-labelledby="chefAuthTitle" hidden>
+  <div class="chef-auth-dialog">
+    <div class="chef-auth-header">
+      <div class="chef-auth-emblem" aria-hidden="true">
+        <svg viewBox="0 0 48 48" width="40" height="40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="24" cy="24" r="21" stroke="#D9A441" stroke-width="1.5" stroke-dasharray="3 3"/>
+          <path d="M16 30C16 22 24 14 32 14C32 22 24 30 16 30Z" stroke="#33472F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M15 33L28 20" stroke="#B5562E" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="tagline">Kitchen Entry &amp; Data Authorization</div>
+        <h2 id="chefAuthTitle">Welcome to Pantry<span>Chef</span></h2>
+      </div>
+    </div>
+
+    <p class="chef-auth-intro">
+      Sign in to sync your personal cookbook, create a local chef account, or continue in Quick Guest Chef mode after reviewing the kitchen data &amp; food safety disclosures below.
+    </p>
+
+    <div class="auth-tabs" role="tablist" aria-label="Authentication Mode">
+      <button type="button" role="tab" class="auth-tab active" id="tabSignIn" aria-selected="true" aria-controls="authFormPanel" data-auth-tab="login">Sign In</button>
+      <button type="button" role="tab" class="auth-tab" id="tabRegister" aria-selected="false" aria-controls="authFormPanel" data-auth-tab="register">Create Account</button>
+      <button type="button" role="tab" class="auth-tab" id="tabGuest" aria-selected="false" aria-controls="authFormPanel" data-auth-tab="guest">Quick Guest Chef</button>
+    </div>
+
+    <form id="chefAuthForm" novalidate>
+      <div id="authFormPanel" role="tabpanel">
+        <div class="field" id="authDisplayNameField" hidden>
+          <label for="authDisplayName">Chef Display Name <span class="label-optional">(optional)</span></label>
+          <input type="text" id="authDisplayName" autocomplete="name" placeholder="e.g. Chef Maya">
+        </div>
+
+        <div id="authCredentialsFields">
+          <div class="field">
+            <label for="authUsername">Username</label>
+            <input type="text" id="authUsername" autocomplete="username" placeholder="e.g. maya_kitchen">
+          </div>
+          <div class="field" style="margin-top: 12px;">
+            <label for="authPassword">Password</label>
+            <input type="password" id="authPassword" autocomplete="current-password" placeholder="At least 4 characters">
+          </div>
+        </div>
+
+        <div class="guest-mode-note" id="authGuestNote" hidden>
+          <strong>Quick Guest Chef Mode:</strong> Generate recipes immediately and use the shared local kitchen recipe box on this device. You can create a named account at any time.
+        </div>
+      </div>
+
+      <fieldset class="consent-fieldset">
+        <legend>Required Data &amp; Culinary Safety Acknowledgments</legend>
+        <label class="consent-check" for="consentDataCheck">
+          <input type="checkbox" id="consentDataCheck" required>
+          <span>I consent to PantryChef sending my entered pantry ingredients to OpenRouter AI models and storing saved recipes.</span>
+        </label>
+        <label class="consent-check" for="consentDisclaimerCheck">
+          <input type="checkbox" id="consentDisclaimerCheck" required>
+          <span>I understand that AI-generated recipes, cooking times, and nutrition estimates are informational only and must be checked for food safety and allergens.</span>
+        </label>
+      </fieldset>
+
+      <div class="error" id="authGateError" role="alert" aria-live="assertive"></div>
+
+      <div class="auth-actions">
+        <button type="submit" class="btn auth-submit-btn" id="authSubmitBtn">Sign In &amp; Enter Kitchen</button>
+        <button type="button" class="btn auth-guest-btn" id="quickGuestBtn">Quick Guest Chef</button>
+      </div>
+
+      <div class="auth-legal-links">
+        Review our <button type="button" class="link-btn" data-open-legal="privacy">Privacy Policy</button> and <button type="button" class="link-btn" data-open-legal="terms">Terms of Use</button>.
+      </div>
+    </form>
+  </div>
 </div>
+
+<!-- Culinary Botanical Spice Ring & Recipe Card Unfold Loading Screen (<5KB pure CSS/SVG) -->
+<div class="chef-loading-screen" id="chefLoadingScreen" role="status" aria-live="polite" aria-label="Preparing PantryChef workspace" hidden>
+  <div class="chef-loading-inner">
+    <svg class="chef-loading-svg" viewBox="0 0 120 120" width="104" height="104" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g class="spice-ring-outer">
+        <circle cx="60" cy="60" r="52" stroke="#D9A441" stroke-width="2" stroke-dasharray="6 8" stroke-linecap="round"/>
+        <circle cx="60" cy="8" r="3.5" fill="#B5562E"/>
+        <circle cx="112" cy="60" r="3" fill="#33472F"/>
+        <circle cx="60" cy="112" r="3.5" fill="#B5562E"/>
+        <circle cx="8" cy="60" r="3" fill="#33472F"/>
+      </g>
+      <g class="botanical-wreath">
+        <circle cx="60" cy="60" r="41" stroke="#33472F" stroke-width="1.5" stroke-opacity="0.45"/>
+        <path d="M34 66C32 50 42 36 60 32C78 36 88 50 86 66" stroke="#33472F" stroke-width="2" stroke-linecap="round"/>
+      </g>
+      <g class="recipe-card-unfold">
+        <rect x="40" y="38" width="40" height="46" rx="3" fill="#FBF6EC" stroke="#33472F" stroke-width="2"/>
+        <line x1="47" y1="49" x2="73" y2="49" stroke="#B5562E" stroke-width="2.2" stroke-linecap="round"/>
+        <line x1="47" y1="58" x2="69" y2="58" stroke="#33472F" stroke-width="1.8" stroke-linecap="round"/>
+        <line x1="47" y1="66" x2="71" y2="66" stroke="#33472F" stroke-width="1.8" stroke-linecap="round"/>
+        <line x1="47" y1="74" x2="62" y2="74" stroke="#D9A441" stroke-width="1.8" stroke-linecap="round"/>
+      </g>
+    </svg>
+    <div class="chef-loading-title">Prepping Your Kitchen Station&hellip;</div>
+    <div class="chef-loading-sub">Unfolding recipe cards &amp; verifying pantry preferences</div>
+    <div class="chef-loading-bar" aria-hidden="true">
+      <div class="chef-loading-bar-fill"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Accessible Privacy Policy & Terms of Use Modal -->
+<div class="legal-modal" id="legalModal" role="dialog" aria-modal="true" aria-labelledby="legalModalTitle" hidden>
+  <div class="legal-modal-dialog">
+    <div class="legal-modal-header">
+      <h2 id="legalModalTitle">Privacy Policy &amp; Terms of Use</h2>
+      <button type="button" class="legal-close-btn" id="closeLegalModalBtn" aria-label="Close legal information">&times;</button>
+    </div>
+    <div class="legal-modal-body">
+      <section id="legalPrivacySection" class="legal-section">
+        <h3>Privacy Policy</h3>
+        <div class="legal-todo-banner">TODO(LEGAL): Supply official organization legal copy</div>
+        <p>
+          <strong>Data Processed:</strong> When you generate recipes, PantryChef transmits your entered pantry ingredients, dietary preference, cuisine selection, and serving count to OpenRouter AI models to synthesize recipe suggestions.
+        </p>
+        <p>
+          <strong>Local Storage &amp; Your Rights:</strong> Account credentials (hashed with PBKDF2-HMAC-SHA256) and saved favorite recipes are stored in your local SQLite database. Authenticated users can export all account and favorite data as JSON (<code>GET /api/account/export</code>) or permanently delete their account and saved recipes (<code>DELETE /api/account</code>) at any time from the navigation bar.
+        </p>
+      </section>
+      <hr class="legal-divider">
+      <section id="legalTermsSection" class="legal-section">
+        <h3>Terms of Use &amp; Culinary Disclaimer</h3>
+        <div class="legal-todo-banner">TODO(LEGAL): Supply official organization legal copy</div>
+        <p>
+          <strong>Informational Use Only:</strong> Recipes, ingredient pairings, cooking durations, and nutritional figures are generated by artificial intelligence and are not reviewed by a certified nutritionist, dietitian, or food safety authority.
+        </p>
+        <p>
+          <strong>Food Safety &amp; Allergens:</strong> You are solely responsible for inspecting all ingredients for food allergies, cross-contamination risks, dietary restrictions, and safe internal cooking temperatures prior to preparation or consumption.
+        </p>
+      </section>
+    </div>
+    <div class="legal-modal-footer">
+      <button type="button" class="btn" id="ackLegalModalBtn">Close</button>
+    </div>
+  </div>
+</div>
+
 {% block scripts %}{% endblock %}
 </body>
 </html>
+
