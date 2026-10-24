@@ -129,7 +129,7 @@ def export_user_data(user_id: int) -> dict | None:
 def delete_user_data(user_id: int) -> bool:
     with get_connection() as conn:
         conn.execute(
-            "DELETE FROM favorites WHERE user_id = ? OR user_id IS NULL",
+            "DELETE FROM favorites WHERE user_id = ?",
             (user_id,),
         )
         cur = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
@@ -213,12 +213,18 @@ def list_favorites(user_id: int | None = None) -> list[dict]:
         return [_row_to_dict(r) for r in rows]
 
 
-def set_rating(favorite_id: int, rating: int) -> dict | None:
+def set_rating(favorite_id: int, rating: int, user_id: int | None = None) -> dict | None:
     rating = max(0, min(5, int(rating)))
     with get_connection() as conn:
-        cur = conn.execute(
-            "UPDATE favorites SET rating = ? WHERE id = ?", (rating, favorite_id)
-        )
+        if user_id is not None:
+            cur = conn.execute(
+                "UPDATE favorites SET rating = ? WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
+                (rating, favorite_id, user_id),
+            )
+        else:
+            cur = conn.execute(
+                "UPDATE favorites SET rating = ? WHERE id = ?", (rating, favorite_id)
+            )
         if cur.rowcount == 0:
             return None
         row = conn.execute(
@@ -227,9 +233,15 @@ def set_rating(favorite_id: int, rating: int) -> dict | None:
         return _row_to_dict(row) if row else None
 
 
-def delete_favorite(favorite_id: int) -> bool:
+def delete_favorite(favorite_id: int, user_id: int | None = None) -> bool:
     with get_connection() as conn:
-        cur = conn.execute("DELETE FROM favorites WHERE id = ?", (favorite_id,))
+        if user_id is not None:
+            cur = conn.execute(
+                "DELETE FROM favorites WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
+                (favorite_id, user_id),
+            )
+        else:
+            cur = conn.execute("DELETE FROM favorites WHERE id = ?", (favorite_id,))
         return cur.rowcount > 0
 
 
@@ -253,6 +265,7 @@ def _row_to_dict(row: sqlite3.Row) -> dict:
         "nutrition": json.loads(row["nutrition_json"] or "{}"),
         "rating": row["rating"],
         "source_model": row["source_model"],
+        "user_id": row["user_id"] if "user_id" in row.keys() else None,
         "created_at": row["created_at"],
     }
 

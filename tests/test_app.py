@@ -392,3 +392,66 @@ def test_auth_register_login_export_and_delete_account(client):
     assert client.get("/api/account/export").status_code == 401
     assert db.list_favorites() == []
 
+
+def test_multi_user_isolation_and_account_delete_blast_radius(client, tmp_path, monkeypatch):
+    # 1. Guest saves a favorite
+    guest_fav = db.add_favorite({"name": "Guest Soup", "ingredients": ["water", "beans"], "steps": ["Boil"]})
+    assert guest_fav["id"] is not None
+
+    # 2. Register Alice
+    client.post("/api/auth/register", json={
+        "username": "chef_alice_2",
+        "password": "secretpassword",
+        "display_name": "Alice Two",
+        "consent_accepted": True,
+    })
+    alice_fav_resp = client.post("/favorites", json={
+        "recipe": {"name": "Alice Tart", "ingredients": ["flour", "berries"], "steps": ["Bake"]},
+    })
+    alice_fav_id = alice_fav_resp.get_json()["id"]
+
+    # 3. Register Bob
+    client.post("/api/auth/logout")
+    client.post("/api/auth/register", json={
+        "username": "chef_bob",
+        "password": "secretpassword",
+        "display_name": "Bob",
+        "consent_accepted": True,
+    })
+    bob_fav_resp = client.post("/favorites", json={
+        "recipe": {"name": "Bob Stew", "ingredients": ["beef", "carrots"], "steps": ["Simmer"]},
+    })
+    bob_fav_id = bob_fav_resp.get_json()["id"]
+
+    # 4. Bob tries to rate Alice's favorite -> 403
+    rate_resp = client.post(f"/favorites/{alice_fav_id}/rating", json={"rating": 5})
+    assert rate_resp.status_code == 403
+
+    # 5. Bob tries to delete Alice's favorite -> 403
+    del_forbidden = client.delete(f"/favorites/{alice_fav_id}")
+    assert del_forbidden.status_code == 403
+
+    # 6. Switch back to Alice and delete Alice's account
+    client.post("/api/auth/logout")
+    client.post("/api/auth/login", json={"username": "chef_alice_2", "password": "secretpassword"})
+    del_alice = client.delete("/api/account")
+    assert del_alice.status_code == 200
+
+    # 7. CRITICAL: Guest favorite and Bob's favorite MUST NOT be deleted!
+    remaining = db.list_favorites()
+    remaining_names = {r["name"] for r in remaining}
+    assert "Guest Soup" in remaining_names
+    assert "Bob Stew" in remaining_names
+    assert "Alice Tart" not in remaining_names
+
+    # 8. Secret key persistence check
+    test_db_dir = tmp_path / "secret_test"
+    test_db_dir.mkdir()
+    monkeypatch.setattr(db, "DB_PATH", str(test_db_dir / "pantry.db"))
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    k1 = app._get_or_create_secret_key()
+    k2 = app._get_or_create_secret_key()
+    assert k1 == k2
+    assert len(k1) == 64
+
+

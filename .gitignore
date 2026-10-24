@@ -4,3 +4,4 @@ __pycache__/
 .vscode/
 pantrychef.db
 .pytest_cache/
+.session_secret

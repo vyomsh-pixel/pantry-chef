@@ -57,8 +57,30 @@ import db
 
 db.DB_PATH = os.environ.get("PANTRYCHEF_DB", db.DB_PATH)
 
+
+def _get_or_create_secret_key() -> str:
+    env_key = normalize_env_value(os.environ.get("SECRET_KEY"))
+    if env_key:
+        return env_key
+    try:
+        key_dir = os.path.dirname(os.path.abspath(db.DB_PATH))
+        os.makedirs(key_dir, exist_ok=True)
+        key_path = os.path.join(key_dir, ".session_secret")
+        if os.path.exists(key_path):
+            with open(key_path, "r", encoding="utf-8") as f:
+                saved = f.read().strip()
+                if saved:
+                    return saved
+        new_key = secrets.token_hex(32)
+        with open(key_path, "w", encoding="utf-8") as f:
+            f.write(new_key)
+        return new_key
+    except Exception:
+        return secrets.token_hex(32)
+
+
 app = Flask(__name__)
-app.secret_key = normalize_env_value(os.environ.get("SECRET_KEY")) or secrets.token_hex(32)
+app.secret_key = _get_or_create_secret_key()
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
@@ -74,7 +96,7 @@ db.init_db()
 
 if not API_KEY:
     print(
-        "\n⚠️  OPENROUTER_API_KEY is not set. Copy .env.example to .env and "
+        "\n[WARNING] OPENROUTER_API_KEY is not set. Copy .env.example to .env and "
         "add your key, or /generate will only return errors.\n"
     )
 
@@ -239,6 +261,13 @@ def add_favorite():
 
 @app.route("/favorites/<int:favorite_id>/rating", methods=["POST"])
 def rate_favorite(favorite_id):
+    user_id = session.get("user_id")
+    fav = db.get_favorite(favorite_id)
+    if not fav:
+        return jsonify({"error": "Favorite not found."}), 404
+    if fav.get("user_id") is not None and fav.get("user_id") != user_id:
+        return jsonify({"error": "Forbidden: You cannot rate another chef's saved recipe."}), 403
+
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return jsonify({"error": "Invalid JSON payload."}), 400
@@ -249,7 +278,7 @@ def rate_favorite(favorite_id):
     except (TypeError, ValueError):
         return jsonify({"error": "Rating must be a number 0-5."}), 400
 
-    updated = db.set_rating(favorite_id, rating)
+    updated = db.set_rating(favorite_id, rating, user_id=user_id)
     if not updated:
         return jsonify({"error": "Favorite not found."}), 404
     return jsonify(updated)
@@ -257,7 +286,14 @@ def rate_favorite(favorite_id):
 
 @app.route("/favorites/<int:favorite_id>", methods=["DELETE"])
 def remove_favorite(favorite_id):
-    deleted = db.delete_favorite(favorite_id)
+    user_id = session.get("user_id")
+    fav = db.get_favorite(favorite_id)
+    if not fav:
+        return jsonify({"error": "Favorite not found."}), 404
+    if fav.get("user_id") is not None and fav.get("user_id") != user_id:
+        return jsonify({"error": "Forbidden: You cannot remove another chef's saved recipe."}), 403
+
+    deleted = db.delete_favorite(favorite_id, user_id=user_id)
     if not deleted:
         return jsonify({"error": "Favorite not found."}), 404
     return jsonify({"deleted": favorite_id})
@@ -361,5 +397,5 @@ if __name__ == "__main__":
     # file in the project directory, including pantrychef.db — so every
     # favorite you save triggers a "code changed" reload and kills the
     # request mid-flight. Restart manually after editing source files.
-    debug = os.environ.get("FLASK_DEBUG") == "1"
-    app.run(host="127.0.0.1", port=5000, debug=debug, use_reloader=False)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="127.0.0.1", port=port, debug=True, use_reloader=False)
